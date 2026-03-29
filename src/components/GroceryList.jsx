@@ -55,11 +55,9 @@ const GroceryList = ({ household }) => {
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
-        throw error;
-      }
+      if (error) throw error;
 
       if (data && data.items) {
         setGroceryItems(data.items);
@@ -95,7 +93,7 @@ const GroceryList = ({ household }) => {
         .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (existing) {
         // Update existing list
