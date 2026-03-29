@@ -3,9 +3,9 @@
 **Date:** 2026-03-29
 **URL:** http://localhost:3099
 **Mode:** Full (report-only)
-**Duration:** ~8 minutes
-**Pages Visited:** 3 (Login, Sign Up, Forgot Password)
-**Screenshots:** 10
+**Duration:** ~20 minutes
+**Pages Visited:** 7 (Login, Sign Up, Forgot Password, Profile Setup, Household Setup, Household Created, Dashboard)
+**Screenshots:** 27
 **Framework:** React 19 (Create React App) + Supabase + Tailwind CSS
 
 ---
@@ -14,155 +14,174 @@
 
 | Severity | Count |
 |----------|-------|
-| Critical | 0 |
+| Critical | 1 |
 | High | 2 |
-| Medium | 2 |
-| Low | 2 |
+| Medium | 4 |
+| Low | 3 |
 
-**Health Score: 68/100**
+**Health Score: 58/100**
 
-The auth flow works well: clean design, proper error handling, good mobile responsiveness. Two high-severity issues stand out: the OpenAI API key exposed in client-side code (security risk) and the duplicate Supabase client files (maintenance hazard). Deeper pages (Profile Setup, Household Setup, Dashboard) could not be tested due to Supabase email rate limiting blocking account creation.
+The app's core flow works end-to-end: signup → profile → household → dashboard → food logging → grocery list. The AI food parser is impressive, correctly parsing natural language ("2 scrambled eggs", "grilled chicken salad with ranch dressing") into structured nutrition data. The grocery list auto-categorizes items. Design is clean and polished throughout.
+
+The main concerns: a flood of 406 errors from Supabase on every dashboard load (likely an RLS or schema mismatch), the OpenAI API key exposed in the client bundle, and several UX issues around weight validation and the invite modal behavior.
 
 ---
 
 ## Top 3 Things to Fix
 
-1. **HIGH: OpenAI API key exposed in client-side bundle** — any user can extract it from devtools. Move to a backend proxy.
-2. **HIGH: Duplicate Supabase client files** — `src/supabaseClient.js` and `src/lib/supabaseClient.js` contain identical code. One should be deleted.
-3. **MEDIUM: Default CRA page title and meta description** — "React App" and "Web site created using create-react-app" are still in `public/index.html`.
+1. **CRITICAL: 406 errors on every dashboard load** — Multiple Supabase REST API calls return 406 (Not Acceptable) on each page load and navigation. These are silent failures... the dashboard renders but may be missing data.
+2. **HIGH: OpenAI API key exposed in client-side bundle** — Extractable from devtools by any user.
+3. **HIGH: Duplicate Supabase client files** — `src/supabaseClient.js` and `src/lib/supabaseClient.js` are identical. Dashboard also uses raw `process.env` in fetch headers instead of the client.
 
 ---
 
 ## Issues
 
-### ISSUE-001: OpenAI API key exposed in client-side code
+### ISSUE-001: 406 errors from Supabase REST API on dashboard load
+**Severity:** Critical
+**Category:** Functional
+
+**Description:**
+Every time the dashboard loads, multiple Supabase REST API calls return HTTP 406 (Not Acceptable). In one page load, 7+ sequential 406 errors appeared. On reload, another batch of 6+ fired. These are silent failures — no error is shown to the user, but data may be missing or stale.
+
+HTTP 406 from PostgREST typically means the request's `Accept` header doesn't match what the server can return, or there's a schema/view mismatch. This could indicate missing database tables, incorrect column references in queries, or an RLS policy issue on related tables.
+
+**Evidence:** Console output shows repeated `Failed to load resource: the server responded with a status of 406 ()` starting at 21:37:50 and continuing through 21:40:56.
+
+**Repro:**
+1. Log in and reach the dashboard
+2. Open browser devtools → Console
+3. See: multiple 406 errors on every load
+
+---
+
+### ISSUE-002: OpenAI API key exposed in client-side code
 **Severity:** High
 **Category:** Security
 
 **Description:**
-`src/lib/openaiClient.js` creates an OpenAI client using `process.env.REACT_APP_OPENAI_API_KEY`. Create React App inlines all `REACT_APP_*` variables into the JavaScript bundle at build time. This means the OpenAI API key is visible to anyone who opens browser devtools or reads the deployed JS bundle.
-
-OpenAI API keys should never be exposed client-side. API calls should be proxied through a backend or serverless function (e.g., Supabase Edge Function).
-
-**Evidence:** Found via source grep. No screenshot needed — this is a code-level security issue.
+`src/lib/openaiClient.js` creates an OpenAI client using `process.env.REACT_APP_OPENAI_API_KEY`. CRA inlines all `REACT_APP_*` variables into the JavaScript bundle at build time, making the key visible to anyone with devtools. Should be proxied through a backend (e.g., Supabase Edge Function).
 
 ---
 
-### ISSUE-002: Duplicate Supabase client files
+### ISSUE-003: Duplicate Supabase client files
 **Severity:** High
 **Category:** Functional
 
 **Description:**
-Two Supabase client files exist with identical code:
-- `src/supabaseClient.js`
-- `src/lib/supabaseClient.js`
+Two identical Supabase client files exist:
+- `src/supabaseClient.js` (orphaned)
+- `src/lib/supabaseClient.js` (used by App.js)
 
-`App.js` imports from `src/lib/supabaseClient.js`. `Dashboard.jsx` uses `process.env.REACT_APP_SUPABASE_ANON_KEY` directly in headers (line 545-546). The orphaned `src/supabaseClient.js` creates confusion about which is canonical and risks someone importing the wrong one.
+Additionally, `Dashboard.jsx` (lines 545-546) uses `process.env.REACT_APP_SUPABASE_ANON_KEY` directly in fetch headers instead of using the Supabase client library. This bypasses the client's built-in auth handling.
 
 ---
 
-### ISSUE-003: Default CRA page title and meta description
+### ISSUE-004: Profile Setup weight field rejects metric values without explanation
+**Severity:** Medium
+**Category:** UX
+
+**Description:**
+The weight field in Profile Setup has `min=100` validation, but there's no visible label indicating the unit is pounds. Entering 70 (a reasonable weight in kg) triggers browser validation: "Value must be greater than or equal to 100." The field labels show "Age", "Weight", "Height" but no units. A user thinking in kg would be confused.
+
+**Evidence:** screenshots/10-after-profile.png — shows validation error on weight field with value 70.
+
+**Repro:**
+1. Sign up and reach Profile Setup
+2. Enter weight: 70
+3. Click Continue
+4. See: native browser validation "Value must be greater than or equal to 100"
+
+---
+
+### ISSUE-005: Default CRA page title and meta description
 **Severity:** Medium
 **Category:** Content
 
 **Description:**
 `public/index.html` still has CRA defaults:
-- Line 27: `<title>React App</title>` — should be "Sync-Plate"
-- Line 10: `<meta name="description" content="Web site created using create-react-app" />` — should describe the app
+- `<title>React App</title>` (line 27)
+- `<meta name="description" content="Web site created using create-react-app" />` (line 10)
 
-This affects SEO, browser tabs, and bookmarks. Every user sees "React App" in their browser tab.
-
-**Evidence:** screenshots/landing.png (browser tab shows "React App")
-
-**Repro:**
-1. Open http://localhost:3099
-2. Look at browser tab title
-3. See: "React App" instead of "Sync-Plate"
+Every user sees "React App" in their browser tab instead of "Sync-Plate."
 
 ---
 
-### ISSUE-004: Default CRA favicon and PWA icons
+### ISSUE-006: Default CRA favicon and PWA icons
 **Severity:** Medium
-**Category:** Visual / Branding
+**Category:** Visual
 
 **Description:**
-The app uses the default CRA React logo for:
-- `public/favicon.ico` (3.8KB — standard CRA size)
-- `public/logo192.png` (5.3KB)
-- `public/logo512.png` (9.6KB)
-
-The app has a custom icon (rose/pink utensils icon) rendered inline via lucide-react, but this doesn't match the favicon. Users see the React logo in their browser tab, bookmarks, and PWA installs.
+The app uses CRA's default React logo for favicon.ico, logo192.png, and logo512.png. The in-app icon (rose/pink utensils) doesn't match what appears in the browser tab or bookmarks.
 
 ---
 
-### ISSUE-005: ESLint warnings — unused variables in FoodInput.jsx
+### ISSUE-007: Invite Partner modal hard to dismiss
+**Severity:** Medium
+**Category:** UX
+
+**Description:**
+Clicking the "Invite Partner" button (or the header button that looks like a nav arrow) opens an invite modal. The modal cannot be closed by pressing Escape. Clicking the backdrop overlay also does not reliably close it. The only way to dismiss is to find the close button within the modal, which is not immediately obvious. On a reload, the modal stays gone, but the experience is jarring.
+
+**Evidence:** screenshots/19-prev-day.png — modal appeared when clicking what looked like date navigation.
+
+---
+
+### ISSUE-008: ESLint warnings — unused variables in FoodInput.jsx
 **Severity:** Low
 **Category:** Code quality
 
 **Description:**
-The dev server compilation output shows:
 ```
 src/components/FoodInput.jsx
-  Line 24:10:  'servingsB' is assigned a value but never used     no-unused-vars
-  Line 24:21:  'setServingsB' is assigned a value but never used  no-unused-vars
+  Line 24:10:  'servingsB' is assigned a value but never used
+  Line 24:21:  'setServingsB' is assigned a value but never used
 ```
-
-Unused state variables suggest incomplete or dead code.
 
 ---
 
-### ISSUE-006: Form state persists across Login/Signup toggle
+### ISSUE-009: Form state persists across Login/Signup toggle
 **Severity:** Low
 **Category:** UX
 
 **Description:**
-When switching between Login and Sign Up views, the email and password fields retain their values. While this could be intentional (saves re-typing), the password field carrying over from a failed login to signup (or vice versa) is unexpected. The error state is properly cleared on toggle, but form data isn't.
+Email and password fields retain values when toggling between Login and Sign Up views. The password carrying over from a failed login to signup is unexpected behavior.
 
-**Evidence:** screenshots/signup-page.png — shows email/password from login attempt still populated in signup form.
+---
 
-**Repro:**
-1. Enter "test@example.com" / "password123" on login
-2. Click "Don't have an account? Sign up"
-3. See: email and password fields still contain the login values
+### ISSUE-010: Calorie target shows 3903 but BMR shows 2518
+**Severity:** Low
+**Category:** Content / UX
+
+**Description:**
+Dashboard header shows "650 / 3903 cal" as the daily target, but also displays "BMR: 2518 cal". The 3903 figure (BMR * activity multiplier + goal adjustment) is not explained anywhere. A user seeing "3903 calories per day" with no context might think the number is wrong. Consider adding a tooltip or breakdown showing how the target was calculated.
+
+**Evidence:** screenshots/15-dashboard.png
 
 ---
 
 ## What Works Well
 
-- **Auth flow design** — Clean, polished gradient background. Card-based form with proper spacing. Icons in input fields add visual clarity without clutter.
-- **Error handling** — `friendlyError()` translates technical Supabase errors into human-readable messages. Rate limiting, invalid credentials, unconfirmed email all have custom messages.
-- **Mobile responsiveness** — Tested at 375x812 (iPhone) and 768x1024 (iPad). Both look great with proper scaling and no overflow.
-- **Loading states** — Button text changes to "Loading..." / "Sending..." with disabled state during async operations.
-- **Form validation** — Native HTML5 validation (`required`, `type="email"`, `minLength={6}`) catches basic input errors before hitting the API.
-- **Accessibility** — Proper `<label>` elements for all inputs, `lang="en"` on root element, semantic heading structure.
+- **AI Food Parser** — Natural language parsing is excellent. "2 scrambled eggs" → 200 cal with correct macros. "Grilled chicken salad with ranch dressing" → 450 cal with detailed protein/carbs/fat/fiber breakdown. Saves to the correct meal type. Loading state ("Parsing...") is clear.
+- **Onboarding flow** — Profile Setup → Household Setup → Dashboard is smooth and linear. Each step is well-designed with clear CTAs.
+- **Grocery list auto-categorization** — Adding "2 lbs chicken breast" automatically files it under "Proteins" with a checkbox. Smart feature.
+- **Weekly View** — Calendar shows daily intake, running totals, balance (over/under), and daily average. Color coding (on target / over / under) is intuitive.
+- **Error handling** — Auth errors are translated to friendly messages via `friendlyError()`. Rate limiting, invalid credentials, unconfirmed email all handled gracefully.
+- **Mobile responsiveness** — Dashboard, auth pages, and profile setup all work well on mobile (375x812). Content stacks properly, no horizontal overflow.
+- **Household invite system** — Clean flow: create household → get code → share with partner. Code display is prominent and has a copy button.
 
 ---
 
 ## Console Health
 
-| Page | Errors | Notes |
-|------|--------|-------|
-| Landing (Login) | 0 | Clean |
-| Sign Up (invalid email) | 1 | `400` from Supabase — expected for invalid email format |
-| Sign Up (rate limited) | 1 | `429` from Supabase — expected rate limiting |
+| Context | New Errors | Notes |
+|---------|-----------|-------|
+| Dashboard load | 7+ × 406 | Supabase REST API returning Not Acceptable |
+| Dashboard reload | 6+ × 406 | Same pattern on every load |
+| Profile setup | 1 × 500, 1 × 406 | First profile save attempt failed, second succeeded |
+| Auth pages | 0 (new) | Previous session errors only |
 
-No unexpected console errors. All errors are Supabase API responses from intentional testing.
-
----
-
-## Pages Not Tested
-
-The following pages could not be reached because account creation requires email confirmation and the Supabase instance rate-limited further signup attempts:
-
-- **ProfileSetup** (`src/components/ProfileSetup.jsx`) — shown after first login, no profile exists
-- **HouseholdSetup** (`src/components/HouseholdSetup.jsx`) — shown after profile creation
-- **Dashboard** (`src/components/Dashboard.jsx`) — main app interface with food tracking
-- **FoodInput** (`src/components/FoodInput.jsx`) — food entry form
-- **WeeklyView** (`src/components/WeeklyView.jsx`) — weekly calorie overview
-- **GroceryList** (`src/components/GroceryList.jsx`) — grocery management
-- **RebalanceModal** (`src/components/RebalanceModal.jsx`) — meal rebalancing feature
-
-To test these pages, provide valid Supabase credentials for an existing account or temporarily disable email confirmation in the Supabase dashboard.
+The 406 flood is the dominant issue. No new JS exceptions were thrown — all errors are network-level Supabase responses.
 
 ---
 
@@ -170,30 +189,48 @@ To test these pages, provide valid Supabase credentials for an existing account 
 
 | Category | Score | Weight | Weighted |
 |----------|-------|--------|----------|
-| Console | 100 | 15% | 15.0 |
+| Console | 10 | 15% | 1.5 |
 | Links | 100 | 10% | 10.0 |
 | Visual | 85 | 10% | 8.5 |
-| Functional | 55 | 20% | 11.0 |
-| UX | 72 | 15% | 10.8 |
-| Performance | 100 | 10% | 10.0 |
-| Content | 60 | 5% | 3.0 |
-| Accessibility | 95 | 15% | 14.3 |
-| **Total** | | | **68** |
+| Functional | 50 | 20% | 10.0 |
+| UX | 60 | 15% | 9.0 |
+| Performance | 85 | 10% | 8.5 |
+| Content | 55 | 5% | 2.8 |
+| Accessibility | 90 | 15% | 13.5 |
+| **Total** | | | **58** |
 
 Notes:
+- Console score dropped to 10 due to the 406 error flood (10+ errors per page load)
+- Functional deducted for 406 errors (-25), duplicate client (-10), security issue (-15)
+- UX deducted for weight validation confusion (-15), modal dismiss issue (-15), form persistence (-5), calorie explanation (-5)
 - Visual deducted for default favicon/icons (-15)
-- Functional deducted for duplicate client (-15), security issue (-15), unused vars (-3), incomplete page coverage (-12)
-- UX deducted for form state persistence (-3), limited testable surface (-25)
-- Content deducted for default title/description (-25), no .env.example (-15)
-- Accessibility deducted for missing page-specific title updates (-5)
+- Content deducted for default title/description (-25), no unit labels (-10), unexplained calorie target (-10)
+- Performance deducted for 406 error overhead (-15)
+
+---
+
+## Pages Tested
+
+| Page | Status | Notes |
+|------|--------|-------|
+| Login | Works | Clean design, good error handling |
+| Sign Up | Works | Email confirmation required, friendly error messages |
+| Forgot Password | Works | Reset email sends correctly |
+| Profile Setup | Works (with issue) | Weight field rejects metric values |
+| Household Setup | Works | Create/Join options, clear flow |
+| Household Created | Works | Invite code display + copy button |
+| Dashboard | Works (with issues) | 406 errors, modal behavior |
+| Food Logger | Works | AI parsing is excellent |
+| Weekly View | Works | Calendar with daily/weekly totals |
+| Grocery List | Works | Auto-categorization is a nice touch |
 
 ---
 
 ## Notes
 
 - No test framework detected beyond the default `App.test.js`. Run `/qa` to bootstrap a test suite.
-- The app is a meal planning / grocery management tool for couples, with Supabase auth, household management, food input, weekly calorie views, grocery lists, and a "rebalance" feature.
-- `Dashboard.jsx` directly uses `process.env.REACT_APP_SUPABASE_ANON_KEY` in fetch headers (lines 545-546) instead of using the Supabase client, which is a code smell.
+- The 406 errors should be investigated first — they likely indicate missing database tables or views that the Dashboard queries expect but don't exist yet. Check the Supabase logs for the specific failing queries.
+- The `Dashboard.jsx` file at 600+ lines should be decomposed into smaller components.
 
 ---
 
