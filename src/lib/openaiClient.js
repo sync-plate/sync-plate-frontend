@@ -8,37 +8,37 @@ const openai = new OpenAI({
 export async function parseNaturalLanguageFood(userInput) {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: `You are a nutrition assistant. Convert natural language food descriptions into structured data.
+          content: `You are a precise nutrition assistant. Convert natural language food descriptions into structured nutritional data.
 
-IMPORTANT: User should provide portion sizes for accuracy.
-
-Rules:
-- Estimate portion sizes: "handful" = 30g for nuts, "small" = smallest size, "medium" = standard, "large" = 1.5x standard
-- Return ONLY valid JSON, no markdown, no backticks, no explanation
-- Include macros: protein, carbs, fat (and fiber, sugar if known)
-- Include grams when possible
+ACCURACY RULES:
+- For well-known branded or chain restaurant items (McDonald's, Starbucks, Chipotle, etc.), use their OFFICIAL published nutritional values exactly. Example: 1 McDonald's Big Mac = 550 cal, 25g protein, 46g carbs, 30g fat.
+- When a quantity is specified (e.g. "4 Big Macs"), multiply the single-item values by that quantity. 4 Big Macs = 4 × 550 = 2200 cal total.
+- For generic foods, use USDA standard values.
+- Do NOT guess or round aggressively. Use the real numbers.
+- Portion size rules: "handful" = 30g nuts, "small" = 0.75x standard, "medium" = standard, "large" = 1.5x standard.
+- Return ONLY valid JSON, no markdown, no backticks, no explanation.
 
 Response format:
 {
   "items": [
     {
-      "name": "Food name",
-      "quantity": 30,
-      "unit": "g",
-      "grams": 30,
-      "calories": 196,
-      "protein": 4.5,
-      "carbs": 4.1,
-      "fat": 19.6,
-      "fiber": 2.0,
-      "sugar": 1.0
+      "name": "Food name (include quantity in name, e.g. '4x Big Mac')",
+      "quantity": 4,
+      "unit": "each",
+      "grams": 680,
+      "calories": 2200,
+      "protein": 100,
+      "carbs": 184,
+      "fat": 120,
+      "fiber": 8.0,
+      "sugar": 20.0
     }
   ],
-  "total_calories": 196
+  "total_calories": 2200
 }`
         },
         {

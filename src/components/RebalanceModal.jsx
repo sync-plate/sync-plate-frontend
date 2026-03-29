@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Calendar, TrendingDown, Heart, ChevronRight, X, Sparkles } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 
 const RebalanceModal = ({ isOpen, onClose, overage, user, remainingMealsToday, daysLeftInWeek, unplannedItem }) => {
   const [selectedOption, setSelectedOption] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   if (!isOpen) return null;
 
@@ -79,21 +81,32 @@ const RebalanceModal = ({ isOpen, onClose, overage, user, remainingMealsToday, d
     setSelectedOption(option);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setIsProcessing(true);
+    setSaveError('');
 
-    // Simulate AI processing
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      const today = new Date();
+      const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+      const { error } = await supabase.from('daily_target_adjustments').insert({
+        user_id: user?.id,
+        adjustment_date: dateStr,
+        overage: safeOverage,
+        choice: selectedOption,
+        daily_reduction: selectedOption === 'daily' ? dailyRebalanceAmount : null,
+        weekly_reduction: selectedOption === 'weekly' ? weeklyRebalanceAmount : null,
+        days_remaining: selectedOption === 'weekly' ? safeDaysLeft : null,
+      });
+
+      if (error) throw error;
       setShowResults(true);
+    } catch (err) {
+      console.error('Failed to save rebalance choice:', err);
+      setSaveError('Something went wrong saving your choice. Please try again.');
+    }
 
-      // TODO: Save the choice to database
-      // This would call your Supabase API to save:
-      // - rebalance_choice (daily/weekly/grace)
-      // - adjustment_details
-      // - affected_meals
-
-    }, 2000);
+    setIsProcessing(false);
   };
 
   const resetModal = () => {
@@ -166,6 +179,13 @@ const RebalanceModal = ({ isOpen, onClose, overage, user, remainingMealsToday, d
                   onSelect={handleOptionSelect}
                 />
               </div>
+
+              {/* Save error */}
+              {saveError && (
+                <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {saveError}
+                </div>
+              )}
 
               {/* Confirm Button */}
               {selectedOption && (

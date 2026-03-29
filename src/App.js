@@ -100,7 +100,7 @@ function App() {
   }
 
   // Everything is set up - show dashboard
-  return <Dashboard />;
+  return <Dashboard currentUserId={session.user.id} />;
 }
 
 export default App;
