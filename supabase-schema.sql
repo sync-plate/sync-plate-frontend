@@ -155,6 +155,55 @@ CREATE POLICY "Users can delete meals"
     )
   );
 
+-- ============================================================
+-- Grocery Lists table
+-- ============================================================
+CREATE TABLE IF NOT EXISTS grocery_lists (
+  id BIGSERIAL PRIMARY KEY,
+  household_id BIGINT REFERENCES households(id) ON DELETE CASCADE,
+  items JSONB DEFAULT '[]'::jsonb,
+  is_active BOOLEAN DEFAULT true,
+  week_start_date DATE,
+  week_end_date DATE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE grocery_lists ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view household grocery lists" ON grocery_lists;
+CREATE POLICY "Users can view household grocery lists"
+  ON grocery_lists FOR SELECT TO authenticated
+  USING (
+    household_id IS NOT NULL
+    AND household_id = public.get_my_household_id()
+  );
+
+DROP POLICY IF EXISTS "Users can insert household grocery lists" ON grocery_lists;
+CREATE POLICY "Users can insert household grocery lists"
+  ON grocery_lists FOR INSERT TO authenticated
+  WITH CHECK (
+    household_id IS NOT NULL
+    AND household_id = public.get_my_household_id()
+  );
+
+DROP POLICY IF EXISTS "Users can update household grocery lists" ON grocery_lists;
+CREATE POLICY "Users can update household grocery lists"
+  ON grocery_lists FOR UPDATE TO authenticated
+  USING (
+    household_id IS NOT NULL
+    AND household_id = public.get_my_household_id()
+  );
+
+DROP POLICY IF EXISTS "Users can delete household grocery lists" ON grocery_lists;
+CREATE POLICY "Users can delete household grocery lists"
+  ON grocery_lists FOR DELETE TO authenticated
+  USING (
+    household_id IS NOT NULL
+    AND household_id = public.get_my_household_id()
+  );
+
+CREATE INDEX IF NOT EXISTS idx_grocery_lists_household ON grocery_lists(household_id);
+
 -- Create index on invite_code for faster lookups
 CREATE INDEX IF NOT EXISTS idx_households_invite_code ON households(invite_code);
 

@@ -536,20 +536,11 @@ const InviteModal = ({ inviteCode, inviteEmail, setInviteEmail, copied, setCopie
     setSendResult(null);
 
     try {
-      const res = await fetch(
-        'https://rrljtsaravnmoxyzuejp.supabase.co/functions/v1/invite-partner',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ email: inviteEmail, invite_code: inviteCode }),
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to send invite');
+      const { data, error } = await supabase.functions.invoke('invite-partner', {
+        body: { email: inviteEmail, invite_code: inviteCode },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       setSendResult('sent');
       setInviteEmail('');
     } catch (err) {
